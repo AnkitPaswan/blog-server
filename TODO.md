@@ -1,0 +1,2 @@
+- [ ] Update PostSchema.js: change comments to array of {name, message, createdAt}
+- [ ] Update postController.js: add POST /:id/like, POST /:id/comment, GET /:id/comments
