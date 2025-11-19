@@ -14,7 +14,7 @@ connectDB();
 
 // Middleware
 app.use(cors({
-  origin: 'http://localhost:5173',
+  origin: ['http://localhost:5173', 'https://blog-chi-eight-25.vercel.app'],
   credentials: true
 }));
 app.use(bodyParser.json());
