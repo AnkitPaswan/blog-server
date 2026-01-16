@@ -1,10 +1,8 @@
 const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
 const User = require('../models/UserSchema');
+const sessionService = require("../services/sessionService");
 
-const JWT_SECRET = 'your-secret-key';
-
-// Login
+// Login with session management
 const login = async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -15,14 +13,30 @@ const login = async (req, res) => {
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) return res.status(400).json({ message: 'Invalid credentials' });
 
-    const token = jwt.sign({ id: user._id, username: user.username, role: user.role }, JWT_SECRET);
-    res.json({ token, user: { id: user._id, username: user.username, role: user.role } });
+    // Generate token using session service
+    const token = sessionService.generateToken({ 
+      id: user._id, 
+      username: user.username, 
+      role: user.role 
+    });
+
+    // Create session in Redis
+    await sessionService.createSession(user._id.toString(), {
+      username: user.username,
+      role: user.role,
+      loginTime: new Date().toISOString()
+    });
+
+    res.json({ 
+      token, 
+      user: { id: user._id, username: user.username, role: user.role } 
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
-// Register
+// Register with session management
 const register = async (req, res) => {
   try {
     const { username, password, role } = req.body;
@@ -43,8 +57,19 @@ const register = async (req, res) => {
 
     const savedUser = await newUser.save();
 
-    // Generate token
-    const token = jwt.sign({ id: savedUser._id, username: savedUser.username, role: savedUser.role }, JWT_SECRET);
+    // Generate token using session service
+    const token = sessionService.generateToken({ 
+      id: savedUser._id, 
+      username: savedUser.username, 
+      role: savedUser.role 
+    });
+
+    // Create session in Redis
+    await sessionService.createSession(savedUser._id.toString(), {
+      username: savedUser.username,
+      role: savedUser.role,
+      loginTime: new Date().toISOString()
+    });
 
     res.status(201).json({
       token,
@@ -60,13 +85,44 @@ const getProfile = async (req, res) => {
   res.json({ user: req.user });
 };
 
-// Verify token middleware
-const verifyToken = (req, res, next) => {
+// Logout with token blacklisting
+const logout = async (req, res) => {
+  try {
+    const token = req.header('Authorization')?.replace('Bearer ', '');
+    if (token) {
+      // Blacklist the token
+      await sessionService.blacklistToken(token);
+    }
+
+    // Optionally delete session
+    if (req.user && req.user.id) {
+      await sessionService.deleteSession(req.user.id);
+    }
+
+    res.json({ message: 'Logged out successfully' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Verify token middleware with session and blacklist check
+const verifyToken = async (req, res, next) => {
   const token = req.header('Authorization')?.replace('Bearer ', '');
   if (!token) return res.status(401).json({ message: 'Access denied' });
 
   try {
-    const verified = jwt.verify(token, JWT_SECRET);
+    // Check if token is blacklisted
+    const isBlacklisted = await sessionService.isBlacklisted(token);
+    if (isBlacklisted) {
+      return res.status(401).json({ message: 'Token has been revoked' });
+    }
+
+    // Verify token using session service
+    const verified = sessionService.verifyToken(token);
+    if (!verified) {
+      return res.status(400).json({ message: 'Invalid token' });
+    }
+
     req.user = verified;
     next();
   } catch (err) {
@@ -78,6 +134,7 @@ module.exports = {
   login,
   register,
   getProfile,
+  logout,
   verifyToken
 };
 
