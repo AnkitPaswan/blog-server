@@ -1,36 +1,137 @@
 const Post = require('../models/PostSchema');
 const { cacheService, CACHE_TTL, CACHE_KEYS } = require('../services/cacheService');
 
-// Get all posts with caching
-const getAllPosts = async (req, res) => {
+
+// Home page API: fetch limited posts per category
+const getHomePosts = async (req, res) => {
   try {
-    const { category } = req.query;
-    const cacheKey = category && category !== 'All' 
-      ? `${CACHE_KEYS.POSTS}:all:${category.toLowerCase()}`
-      : `${CACHE_KEYS.POSTS}:all:all`;
+    const LIMIT = 8;
+    const cacheKey = `${CACHE_KEYS.POSTS}:home`;
 
-    // Try to get from cache first
-    const cachedPosts = await cacheService.get(cacheKey);
-    if (cachedPosts) {
-      return res.json(cachedPosts);
+    // 1️⃣ Try to get from cache first
+    const cached = await cacheService.get(cacheKey);
+    if (cached) {
+      console.log("Home posts fetched from cache");
+      return res.json({ success: true, data: cached });
     }
 
-    // Cache miss, fetch from database
-    let query = {};
-    if (category && category !== 'All') {
-      query.category = new RegExp(category, 'i');
-    }
+    // 2️⃣ Cache miss → fetch from DB
+    const categories = await Post.distinct("category");
 
-    const posts = await Post.find(query).sort({ createdAt: -1 });
-    
-    // Store in cache
-    await cacheService.set(cacheKey, posts, CACHE_TTL.LONG);
-    
-    res.json(posts);
+    const data = {};
+
+    await Promise.all(
+      categories.map(async (category) => {
+        const posts = await Post.find({ category })
+          .sort({ createdAt: -1 })
+          .limit(LIMIT);
+        if (posts.length) {
+          data[category] = posts;
+        }
+      })
+    );
+
+    // 3️⃣ Store in Redis cache
+    await cacheService.set(cacheKey, data, CACHE_TTL.LONG);
+    console.log("Home posts cached in Redis");
+
+    res.json({ success: true, data });
   } catch (error) {
+    console.error("getHomePosts error:", error);
     res.status(500).json({ message: error.message });
   }
 };
+
+
+
+// Get all posts with caching
+// const getAllPosts = async (req, res) => {
+//   try {
+//     const { category } = req.query;
+//     const cacheKey = category && category !== 'All' 
+//       ? `${CACHE_KEYS.POSTS}:all:${category.toLowerCase()}`
+//       : `${CACHE_KEYS.POSTS}:all:all`;
+
+//     // Try to get from cache first
+//     const cachedPosts = await cacheService.get(cacheKey);
+//     if (cachedPosts) {
+//       return res.json(cachedPosts);
+//     }
+
+//     // Cache miss, fetch from database
+//     let query = {};
+//     if (category && category !== 'All') {
+//       query.category = new RegExp(category, 'i');
+//     }
+
+//     const posts = await Post.find(query).sort({ createdAt: -1 });
+    
+//     // Store in cache
+//     await cacheService.set(cacheKey, posts, CACHE_TTL.LONG);
+    
+//     res.json(posts);
+//   } catch (error) {
+//     res.status(500).json({ message: error.message });
+//   }
+// };
+
+const mongoose = require("mongoose");
+
+const getAllPosts = async (req, res) => {
+  try {
+    const { category, cursor, id } = req.query;
+    const limit = parseInt(req.query.limit) || 8;
+
+    const normalizedCategory =
+      category && category !== "All" ? category.toLowerCase() : "all";
+
+    const cacheKey = `${CACHE_KEYS.POSTS}:cursor:${cursor || "first"}:${id || "first"}:${limit}:${normalizedCategory}`;
+
+    const cached = await cacheService.get(cacheKey);
+    if (cached) return res.json(cached);
+
+    let query = {};
+    if (category && category !== "All") {
+      query.category = new RegExp(`^${category}$`, "i");
+    }
+
+    // ✅ CORRECT CURSOR CONDITION
+    if (cursor && id) {
+      query.$or = [
+        { createdAt: { $lt: new Date(cursor) } },
+        {
+          createdAt: new Date(cursor),
+          _id: { $lt: new mongoose.Types.ObjectId(id) },
+        },
+      ];
+    }
+
+    const posts = await Post.find(query)
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(limit + 1);
+
+    const hasMore = posts.length > limit;
+    if (hasMore) posts.pop();
+
+    const lastPost = posts[posts.length - 1];
+
+    const response = {
+      posts,
+      nextCursor: lastPost?.createdAt || null,
+      nextId: lastPost?._id || null,
+      hasMore,
+    };
+
+    await cacheService.set(cacheKey, response, CACHE_TTL.MEDIUM);
+
+    res.json(response);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
+
 
 // Get post by ID with caching
 const getPostById = async (req, res) => {
@@ -172,16 +273,36 @@ const getDashboardStats = async (req, res) => {
     }
 
     // Cache miss, fetch from database
-    const [postCount, viewAggregation, commentAggregation] = await Promise.all([
+    const [postCount, viewAggregation, commentAggregation, categoryAggregation] = await Promise.all([
       Post.countDocuments(),
       Post.aggregate([{ $group: { _id: null, totalViews: { $sum: "$views" } } }]),
-      Post.aggregate([{ $group: { _id: null, totalComments: { $sum: "$commentCount" } } }])
+      Post.aggregate([{ $group: { _id: null, totalComments: { $sum: "$commentCount" } } }]),
+      Post.aggregate([
+        {
+          $group: {
+            _id: "$category",
+            totalPosts: { $sum: 1 },
+            totalViews: { $sum: "$views" },
+            totalComments: { $sum: "$commentCount" }
+          }
+        },
+        { $sort: { _id: 1 } }
+      ])
     ]);
+
+    const categories = categoryAggregation.map(cat => ({
+      name: cat._id,
+      totalPosts: cat.totalPosts,
+      totalViews: cat.totalViews,
+      totalComments: cat.totalComments
+    }));
 
     const stats = {
       totalPosts: postCount,
       totalViews: viewAggregation[0]?.totalViews || 0,
-      totalComments: commentAggregation[0]?.totalComments || 0
+      totalComments: commentAggregation[0]?.totalComments || 0,
+      totalCategories: categories.length,
+      categories
     };
     
     // Store in cache
@@ -194,6 +315,7 @@ const getDashboardStats = async (req, res) => {
 };
 
 module.exports = {
+  getHomePosts,
   getAllPosts,
   getPostById,
   incrementPostView,

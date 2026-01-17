@@ -39,28 +39,49 @@ const createComment = async (req, res) => {
 // Get comments by post with caching
 const getCommentsByPost = async (req, res) => {
   try {
-    const normalizedPostId = Number(req.params.postId);
-    const cacheKey = `${CACHE_KEYS.COMMENTS}:${normalizedPostId}`;
-    
-    // Try to get from cache first
-    const cachedComments = await cacheService.get(cacheKey);
-    if (cachedComments) {
-      return res.json(cachedComments);
+    const postId = Number(req.params.postId);
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
+    const limit = Math.min(parseInt(req.query.limit) || 10, 50);
+    const skip = (page - 1) * limit;
+
+    // cache key should include page & limit
+    const cacheKey = `${CACHE_KEYS.COMMENTS}:${postId}:page:${page}:limit:${limit}`;
+
+    // 1️⃣ Try cache
+    const cached = await cacheService.get(cacheKey);
+    if (cached) {
+      return res.json(cached);
     }
 
-    // Cache miss, fetch from database
-    const comments = await Comment.find({ postId: normalizedPostId }).sort({
-      createdAt: -1
-    });
-    
-    // Store in cache
-    await cacheService.set(cacheKey, comments, CACHE_TTL.MEDIUM);
-    
-    res.json(comments);
+    // 2️⃣ Fetch from DB
+    const [comments, total] = await Promise.all([
+      Comment.find({ postId })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+
+      Comment.countDocuments({ postId })
+    ]);
+
+    const response = {
+      comments,
+      page,
+      limit,
+      totalComments: total,
+      // totalPages: Math.ceil(total / limit),
+      hasMore: skip + comments.length < total
+    };
+
+    // 3️⃣ Cache response
+    await cacheService.set(cacheKey, response, CACHE_TTL.MEDIUM);
+
+    res.json(response);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ message: error.message });
   }
 };
+
 
 // Delete comment (with cache invalidation)
 const deleteComment = async (req, res) => {

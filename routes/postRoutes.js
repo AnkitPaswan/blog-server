@@ -8,10 +8,12 @@ const {
   updatePost,
   deletePost,
   searchPosts,
-  getDashboardStats
+  getDashboardStats,
+  getHomePosts
 } = require('../controllers/postController');
 
 router.get('/', getAllPosts);
+router.get("/home", getHomePosts);
 router.get('/dashboard', getDashboardStats);
 router.get('/search/:term', searchPosts);
 router.get('/:id', getPostById);
