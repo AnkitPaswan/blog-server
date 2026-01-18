@@ -230,36 +230,114 @@ const deletePost = async (req, res) => {
 };
 
 // Search posts with caching
+// const searchPosts = async (req, res) => {
+//   try {
+//     const term = req.params.term;
+//     const cacheKey = `${CACHE_KEYS.SEARCH}:${term.toLowerCase()}`;
+    
+//     // Try to get from cache first
+//     const cachedResults = await cacheService.get(cacheKey);
+//     if (cachedResults) {
+//       return res.json(cachedResults);
+//     }
+
+//     // Cache miss, search in database
+//     const posts = await Post.find({
+//       $or: [
+//         { title: new RegExp(term, 'i') },
+//         { content: new RegExp(term, 'i') },
+//         { caption: new RegExp(term, 'i') },
+//         { tag: new RegExp(term, 'i') },
+//         { category: new RegExp(term, 'i') },
+//       ]
+//     }).sort({ createdAt: -1 });
+    
+//     // Store in cache with shorter TTL for search results
+//     await cacheService.set(cacheKey, posts, CACHE_TTL.MEDIUM);
+    
+//     res.json(posts);
+//   } catch (error) {
+//     res.status(500).json({ message: error.message });
+//   }
+// };
+
+
 const searchPosts = async (req, res) => {
   try {
-    const term = req.params.term;
-    const cacheKey = `${CACHE_KEYS.SEARCH}:${term.toLowerCase()}`;
-    
-    // Try to get from cache first
-    const cachedResults = await cacheService.get(cacheKey);
-    if (cachedResults) {
-      return res.json(cachedResults);
+    const term = req.params.term?.trim();
+    const { cursor, id } = req.query;
+    const limit = parseInt(req.query.limit) || 8;
+
+    if (!term) {
+      return res.status(400).json({ message: "Search term required" });
     }
 
-    // Cache miss, search in database
-    const posts = await Post.find({
+    // 🔑 IMPORTANT: cursor-aware cache key
+    const cacheKey = `${CACHE_KEYS.SEARCH}:${term.toLowerCase()}:cursor:${
+      cursor || "first"
+    }:${id || "first"}:${limit}`;
+
+    const cached = await cacheService.get(cacheKey);
+    if (cached) {
+      console.log("🔥 SEARCH CACHE HIT:", cacheKey);
+      return res.json(cached);
+    }
+
+    console.log("🟡 SEARCH CACHE MISS:", cacheKey);
+
+    // 🔍 Search condition
+    let query = {
       $or: [
-        { title: new RegExp(term, 'i') },
-        { content: new RegExp(term, 'i') },
-        { caption: new RegExp(term, 'i') },
-        { tag: new RegExp(term, 'i') },
-        { category: new RegExp(term, 'i') },
-      ]
-    }).sort({ createdAt: -1 });
-    
-    // Store in cache with shorter TTL for search results
-    await cacheService.set(cacheKey, posts, CACHE_TTL.MEDIUM);
-    
-    res.json(posts);
+        { title: new RegExp(term, "i") },
+        { content: new RegExp(term, "i") },
+        { caption: new RegExp(term, "i") },
+        { tag: new RegExp(term, "i") },
+        { category: new RegExp(term, "i") },
+      ],
+    };
+
+    // ⏬ Cursor condition
+    if (cursor && id) {
+      query.$and = [
+        {
+          $or: [
+            { createdAt: { $lt: new Date(cursor) } },
+            {
+              createdAt: new Date(cursor),
+              _id: { $lt: new mongoose.Types.ObjectId(id) },
+            },
+          ],
+        },
+      ];
+    }
+
+    // 📥 Fetch posts
+    const posts = await Post.find(query)
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(limit + 1);
+
+    const hasMore = posts.length > limit;
+    if (hasMore) posts.pop();
+
+    const lastPost = posts[posts.length - 1];
+
+    const response = {
+      posts,
+      nextCursor: lastPost?.createdAt || null,
+      nextId: lastPost?._id || null,
+      hasMore,
+    };
+
+    // 🧠 Cache it
+    await cacheService.set(cacheKey, response, CACHE_TTL.MEDIUM);
+
+    res.json(response);
   } catch (error) {
+    console.error("Search error:", error);
     res.status(500).json({ message: error.message });
   }
 };
+
 
 // Dashboard stats with caching
 const getDashboardStats = async (req, res) => {
