@@ -31,6 +31,10 @@ const postSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    trivia: {
+      type: String,
+      default: "",
+    },
     commentCount: {
       type: Number,
       default: 0,
