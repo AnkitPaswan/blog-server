@@ -8,6 +8,7 @@ const postRoutes = require("./routes/postRoutes");
 const categoryRoutes = require("./routes/categoryRoutes");
 const commentRoutes = require("./routes/commentRoutes");
 const authRoutes = require("./routes/authRoutes");
+const knowledgeRoutes = require("./routes/knowledge");
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -62,6 +63,7 @@ app.use("/api/auth", authRateLimiter, authRoutes);
 app.use("/api/posts", postRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/comments", commentRoutes);
+app.use("/api/knowledge", knowledgeRoutes);
 
 // Default route
 app.get("/", (req, res) => {

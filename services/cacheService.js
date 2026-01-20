@@ -14,6 +14,7 @@ const CACHE_TTL = {
 const CACHE_KEYS = {
   POSTS: "posts",
   POST: "post",
+  KNOWLEDGE: "knowledge",
   CATEGORIES: "categories",
   COMMENTS: "comments",
   PROFILE: "profile",

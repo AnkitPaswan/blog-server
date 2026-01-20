@@ -31,10 +31,23 @@ const postSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    // trivia: {
+    //   type: String,
+    //   default: "",
+    // },
+
     trivia: {
-      type: String,
-      default: "",
+      content: {
+        type: String, // TipTap HTML
+        default: "",
+      },
+      knowledgeArticleId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Knowledge", // future knowledge repo
+        default: null,
+      },
     },
+
     commentCount: {
       type: Number,
       default: 0,
@@ -46,7 +59,7 @@ const postSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 module.exports = mongoose.model("Post", postSchema);
