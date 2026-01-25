@@ -230,37 +230,6 @@ const deletePost = async (req, res) => {
 };
 
 // Search posts with caching
-// const searchPosts = async (req, res) => {
-//   try {
-//     const term = req.params.term;
-//     const cacheKey = `${CACHE_KEYS.SEARCH}:${term.toLowerCase()}`;
-    
-//     // Try to get from cache first
-//     const cachedResults = await cacheService.get(cacheKey);
-//     if (cachedResults) {
-//       return res.json(cachedResults);
-//     }
-
-//     // Cache miss, search in database
-//     const posts = await Post.find({
-//       $or: [
-//         { title: new RegExp(term, 'i') },
-//         { content: new RegExp(term, 'i') },
-//         { caption: new RegExp(term, 'i') },
-//         { tag: new RegExp(term, 'i') },
-//         { category: new RegExp(term, 'i') },
-//       ]
-//     }).sort({ createdAt: -1 });
-    
-//     // Store in cache with shorter TTL for search results
-//     await cacheService.set(cacheKey, posts, CACHE_TTL.MEDIUM);
-    
-//     res.json(posts);
-//   } catch (error) {
-//     res.status(500).json({ message: error.message });
-//   }
-// };
-
 
 const searchPosts = async (req, res) => {
   try {
