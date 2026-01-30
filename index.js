@@ -33,9 +33,9 @@ initializeRedis();
 app.use(
   cors({
     origin: [
-      // "http://localhost:5173",
-      // "http://localhost:5174",
-      // "https://blogs-ivory-five.vercel.app",
+      "http://localhost:5173",
+      "http://localhost:5174",
+      "https://blogs-ivory-five.vercel.app",
     ],
     credentials: true,
   })
