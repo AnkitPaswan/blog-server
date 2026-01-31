@@ -7,7 +7,7 @@ const posts = require('../model/Post');
 const seedDatabase = async () => {
   try {
     // Connect to MongoDB
-    await mongoose.connect('mongodb+srv://ankitpaswan192_db_user:reOonaJFGsmIEqLf@cluster0.tjigwtg.mongodb.net/blog');
+    await mongoose.connect('mongodb+srv://ankitpaswan192_db_user:reOonaJFGsmIEqLf@cluster0.tjigwtg.mongodb.net/blog?authSource=admin');
 
     // Clear existing data
     await Post.deleteMany({});

@@ -4,7 +4,7 @@ dotenv.config();
 
 const connectDB = async () => {
   try {
-    const mongoURI = process.env.MONGODB_URI;
+    const mongoURI = 'mongodb+srv://ankitpaswan192_db_user:reOonaJFGsmIEqLf@cluster0.tjigwtg.mongodb.net/blog?authSource=admin';
     await mongoose.connect(mongoURI, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
