@@ -63,7 +63,7 @@ app.use("/api/auth", authRateLimiter, authRoutes);
 app.use("/api/posts", postRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/comments", commentRoutes);
-app.use("/api/knowledges", knowledgeRoutes);
+app.use("/api/knowledge", knowledgeRoutes);
 
 // Default route
 app.get("/", (req, res) => {
